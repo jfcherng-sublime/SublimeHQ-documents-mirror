@@ -1,0 +1,62 @@
+name: Mirror Sublime HQ documents
+
+on:
+  push:
+    branches:
+      - '*'
+  pull_request:
+    branches:
+      - '*'
+  schedule:
+    # @see https://crontab.guru
+    - cron: '0 3 */1 * *'
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Prepare
+        run: |
+          sudo apt install -y httrack
+
+      - name: Environment Variables
+        run: |
+          NOW="$(date +'%Y/%m/%d %H:%M:%S')"
+          echo "NOW=$NOW" >> $GITHUB_ENV
+          TODAY="$(date +'%Y%m%d')"
+          echo "TODAY=$TODAY" >> $GITHUB_ENV
+
+          SM_DIR="SM_official_docs_${TODAY}"
+          SM_ZIP="$SM_DIR.${{ github.run_number }}.zip"
+          echo "SM_DIR=$SM_DIR" >> $GITHUB_ENV
+          echo "SM_ZIP=$SM_ZIP" >> $GITHUB_ENV
+          ST_DIR="ST_official_docs_${TODAY}"
+          ST_ZIP="$ST_DIR.${{ github.run_number }}.zip"
+          echo "ST_DIR=$ST_DIR" >> $GITHUB_ENV
+          echo "ST_ZIP=$ST_ZIP" >> $GITHUB_ENV
+
+      - name: Mirror
+        run: |
+          ./scripts/mirror_official_docs.sh
+          tree .
+
+          pushd scripts/docs/
+          zip -9ry "${{ github.workspace }}/${{ env.SM_ZIP }}" "${{ env.SM_DIR }}"
+          zip -9ry "${{ github.workspace }}/${{ env.ST_ZIP }}" "${{ env.ST_DIR }}"
+          popd
+
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          draft: false
+          prerelease: false
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          token: ${{ secrets.ACCESS_TOKEN }}
+          tag: v${{ env.TODAY }}.${{ github.run_number }}
+          body: Mirrored documents on ${{ env.TODAY }}.
+          artifacts: ${{ env.SM_ZIP }},${{ env.ST_ZIP }}
